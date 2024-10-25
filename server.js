@@ -134,8 +134,11 @@ async function proxyRequest(req, res) {
       res.send(response.data);
 
       // Increase the requestCount only when the forward request is successful
-      requestTracker[instance.index].requestCount++;
-      requestTracker[instance.index].lastAccess = Date.now();
+      // count only request is POST
+      if (req.method === 'POST') {
+        requestTracker[instance.index].requestCount++;
+        requestTracker[instance.index].lastAccess = Date.now();
+      }
     } catch (error) {
       console.error(`Error with instance ${instance.url}:`, error.message);
       attempts++;
