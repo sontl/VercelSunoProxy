@@ -4,6 +4,7 @@ const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const path = require('path');
 const uiRoutes = require('./uiRoutes');
+const setupCronJobs = require('./cronJobs');
 
 const app = express();
 const PORT = 8886;
@@ -23,6 +24,7 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
   } else {
     console.log('Database connected');
     createTables();
+    setupCronJobs(db);  // Set up cron jobs after database connection
   }
 });
 
@@ -45,6 +47,7 @@ function createTables() {
       api_endpoint_url TEXT,
       suno_id INTEGER UNIQUE,
       description TEXT,
+      RequestLimit INTEGER DEFAULT 2,
       FOREIGN KEY (suno_id) REFERENCES Suno(id)
     )`);
   });
@@ -53,7 +56,7 @@ function createTables() {
 // Function to get API instances from the database
 function getApiInstances() {
   return new Promise((resolve, reject) => {
-    db.all(`SELECT v.api_endpoint_url, s.status 
+    db.all(`SELECT v.api_endpoint_url, v.RequestLimit, s.status 
             FROM Vercel v 
             JOIN Suno s ON v.suno_id = s.id 
             WHERE s.status = 'VALID'`, [], (err, rows) => {
@@ -61,7 +64,10 @@ function getApiInstances() {
         console.error('Error fetching API instances', err);
         resolve([]);
       } else {
-        const apiInstances = rows.map(row => row.api_endpoint_url);
+        const apiInstances = rows.map(row => ({
+          url: row.api_endpoint_url,
+          requestLimit: row.RequestLimit
+        }));
         resolve(apiInstances);
       }
     });
@@ -83,14 +89,14 @@ async function getAvailableInstance() {
 
   console.log('requestTracker', requestTracker);
   for (let i = 0; i < apiInstances.length; i++) {
-    if (requestTracker[i].requestCount < 2 ||
+    if (requestTracker[i].requestCount < apiInstances[i].requestLimit ||
       currentTime - requestTracker[i].lastAccess > 30000) {
 
       if (currentTime - requestTracker[i].lastAccess > 30000) {
         requestTracker[i].requestCount = 0; // Reset count after cooldown
       }
 
-      return { url: apiInstances[i], index: i };
+      return { url: apiInstances[i].url, index: i, requestLimit: apiInstances[i].requestLimit };
     }
   }
   return null; // No available instance within limit
@@ -120,22 +126,34 @@ async function proxyRequest(req, res) {
         url: `${instance.url}${req.path}`,
         headers: {
           ...req.headers,
-          host: new URL(instance.url).host // Update the host header
+          host: new URL(instance.url).host,
+          'Accept-Encoding': 'identity'
         },
         data: req.body,
-        validateStatus: false // Don't throw on any status code
+        validateStatus: false,
+        decompress: false
       });
+
+      // Check for 402 status code and "Insufficient credits" error
+      if (response.status === 402 && response.data && response.data.error === "Insufficient credits.") {
+        console.log(`Instance ${instance.url} has insufficient credits. Updating status to INVALID.`);
+        await updateVercelStatus(instance.url, 'INVALID');
+        attempts++;
+        return setTimeout(tryRequest, 1000); // Retry with another instance
+      }
 
       // Forward the response status, headers, and data
       res.status(response.status);
       Object.entries(response.headers).forEach(([key, value]) => {
-        res.setHeader(key, value);
+        if (key.toLowerCase() !== 'content-encoding') {
+          res.setHeader(key, value);
+        }
       });
+      res.removeHeader('Content-Encoding');
       res.send(response.data);
 
       // Increase the requestCount only when the forward request is successful
-      // count only request is POST
-      if (req.method === 'POST') {
+      if (req.method === 'POST' && response.status === 200) {
         requestTracker[instance.index].requestCount++;
         requestTracker[instance.index].lastAccess = Date.now();
       }
@@ -143,11 +161,29 @@ async function proxyRequest(req, res) {
       console.error(`Error with instance ${instance.url}:`, error.message);
       attempts++;
       console.log(`Trying another instance. Attempt ${attempts} of ${maxAttempts}.`);
-      setTimeout(tryRequest, 1000); // Wait 1 second before retrying
+      setTimeout(tryRequest, 1000);
     }
   };
 
   tryRequest();
+}
+
+// Function to update Vercel status
+function updateVercelStatus(apiEndpointUrl, status) {
+  return new Promise((resolve, reject) => {
+    db.run(`UPDATE Suno SET status = ? WHERE id = (SELECT suno_id FROM Vercel WHERE api_endpoint_url = ?)`,
+      [status, apiEndpointUrl],
+      (err) => {
+        if (err) {
+          console.error('Error updating Vercel status:', err);
+          reject(err);
+        } else {
+          console.log(`Updated status for ${apiEndpointUrl} to ${status}`);
+          resolve();
+        }
+      }
+    );
+  });
 }
 
 // Add a catch-all route to handle all methods and paths

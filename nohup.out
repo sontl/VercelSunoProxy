@@ -1,0 +1,23 @@
+
+> suno-vercel-proxy@1.0.0 start
+> node server.js
+
+uiRoutes initialized with db: true
+Server running on http://localhost:8886
+Database connected
+
+> suno-vercel-proxy@1.0.0 start
+> node server.js
+
+uiRoutes initialized with db: true
+Server running on http://localhost:8886
+Database connected
+UI route accessed: GET /ui
+Accessing root UI route
+Fetched rows: 4
+requestTracker [
+  { requestCount: 0, lastAccess: 0 },
+  { requestCount: 0, lastAccess: 0 },
+  { requestCount: 0, lastAccess: 0 },
+  { requestCount: 0, lastAccess: 0 }
+]

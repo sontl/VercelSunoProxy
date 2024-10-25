@@ -1,23 +1,29 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Edit Suno-Vercel Pair</title>
 </head>
+
 <body>
     <h1>Edit Suno-Vercel Pair</h1>
     <form method="POST" action="/ui/edit/<%= pair.id %>">
         <label>Cookies: <input type="text" name="cookies" value="<%= pair.cookies %>" required></label><br>
         <label>Email: <input type="email" name="email" value="<%= pair.email %>" required></label><br>
-        <label>Status: 
+        <label>Status:
             <select name="status" required>
-                <option value="VALID" <%= pair.status === 'VALID' ? 'selected' : '' %>>VALID</option>
-                <option value="INVALID" <%= pair.status === 'INVALID' ? 'selected' : '' %>>INVALID</option>
+                <option value="VALID" <%=pair.status==='VALID' ? 'selected' : '' %>>VALID</option>
+                <option value="INVALID" <%=pair.status==='INVALID' ? 'selected' : '' %>>INVALID</option>
             </select>
         </label><br>
-        <label>API Endpoint URL: <input type="url" name="api_endpoint_url" value="<%= pair.api_endpoint_url %>" required></label><br>
+        <label>API Endpoint URL: <input type="url" name="api_endpoint_url" value="<%= pair.api_endpoint_url %>"
+                required></label><br>
         <label>Description: <textarea name="description"><%= pair.description %></textarea></label><br>
+        <label>Request Limit: <input type="number" name="requestLimit" value="<%= pair.RequestLimit %>" min="1"
+                required></label><br>
         <button type="submit">Update</button>
     </form>
     <a href="/ui">Back to List</a>
 </body>
+
 </html>

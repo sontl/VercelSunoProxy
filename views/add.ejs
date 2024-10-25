@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Add Suno-Vercel Pair</title>
 </head>
+
 <body>
     <h1>Add Suno-Vercel Pair</h1>
     <form method="POST" action="/ui/add">
         <label>Cookies: <input type="text" name="cookies" required></label><br>
         <label>Email: <input type="email" name="email" required></label><br>
-        <label>Status: 
+        <label>Status:
             <select name="status" required>
                 <option value="VALID">VALID</option>
                 <option value="INVALID">INVALID</option>
@@ -16,8 +18,10 @@
         </label><br>
         <label>API Endpoint URL: <input type="url" name="api_endpoint_url" required></label><br>
         <label>Description: <textarea name="description"></textarea></label><br>
+        <label>Request Limit: <input type="number" name="requestLimit" value="2" min="1" required></label><br>
         <button type="submit">Add</button>
     </form>
     <a href="/ui">Back to List</a>
 </body>
+
 </html>

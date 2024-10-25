@@ -11,7 +11,7 @@ module.exports = function (db) {
 
     router.get('/ui', (req, res) => {
         console.log('Accessing root UI route');
-        db.all('SELECT v.*, s.email, s.status FROM Vercel v JOIN Suno s ON v.suno_id = s.id', [], (err, rows) => {
+        db.all('SELECT v.*, s.email, s.status, COALESCE(v.requestLimit, 2) as requestLimit FROM Vercel v JOIN Suno s ON v.suno_id = s.id', [], (err, rows) => {
             if (err) {
                 console.error('Error in root route:', err);
                 res.status(500).send('Error fetching data');
@@ -40,7 +40,8 @@ module.exports = function (db) {
             created_date: new Date().toISOString(),
             modified_date: new Date().toISOString(),
             api_endpoint_url: req.body.api_endpoint_url,
-            description: req.body.description
+            description: req.body.description,
+            requestLimit: req.body.requestLimit
         };
 
         addSunoVercelPair(db, sunoData, vercelData, (err) => {
@@ -55,7 +56,7 @@ module.exports = function (db) {
 
     router.get('/ui/edit/:id', (req, res) => {
         const id = req.params.id;
-        db.get('SELECT v.*, s.* FROM Vercel v JOIN Suno s ON v.suno_id = s.id WHERE v.id = ?', [id], (err, row) => {
+        db.get('SELECT v.*, s.*, v.requestLimit FROM Vercel v JOIN Suno s ON v.suno_id = s.id WHERE v.id = ?', [id], (err, row) => {
             if (err) {
                 console.error(err);
                 res.status(500).send('Error fetching data');
@@ -79,6 +80,7 @@ module.exports = function (db) {
         const vercelData = [
             req.body.api_endpoint_url,
             req.body.description,
+            req.body.requestLimit,
             new Date().toISOString(),
             id
         ];
@@ -90,7 +92,7 @@ module.exports = function (db) {
                 db.run('ROLLBACK');
                 res.status(500).send('Error updating data');
             } else {
-                db.run('UPDATE Vercel SET api_endpoint_url = ?, description = ?, modified_date = ? WHERE id = ?', vercelData, (err) => {
+                db.run('UPDATE Vercel SET api_endpoint_url = ?, description = ?, requestLimit = COALESCE(?, 2), modified_date = ? WHERE id = ?', vercelData, (err) => {
                     if (err) {
                         console.error(err);
                         db.run('ROLLBACK');
@@ -153,9 +155,9 @@ function addSunoVercelPair(db, sunoData, vercelData, callback) {
 
                 const sunoId = this.lastID;
 
-                db.run(`INSERT INTO Vercel (created_date, modified_date, api_endpoint_url, suno_id, description) 
-                VALUES (?, ?, ?, ?, ?)`,
-                    [vercelData.created_date, vercelData.modified_date, vercelData.api_endpoint_url, sunoId, vercelData.description],
+                db.run(`INSERT INTO Vercel (created_date, modified_date, api_endpoint_url, suno_id, description, requestLimit) 
+                VALUES (?, ?, ?, ?, ?, ?)`,
+                    [vercelData.created_date, vercelData.modified_date, vercelData.api_endpoint_url, sunoId, vercelData.description, vercelData.requestLimit],
                     (err) => {
                         if (err) {
                             console.error('Error inserting Vercel data', err);

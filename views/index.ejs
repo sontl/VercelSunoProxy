@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Suno-Vercel Pairs</title>
 </head>
+
 <body>
     <h1>Suno-Vercel Pairs</h1>
     <a href="/ui/add">Add New Pair</a>
@@ -13,19 +15,32 @@
             <th>Email</th>
             <th>Status</th>
             <th>Actions</th>
+            <th>Request Limit</th>
         </tr>
         <% pairs.forEach(function(pair) { %>
             <tr>
-                <td><%= pair.id %></td>
-                <td><%= pair.api_endpoint_url %></td>
-                <td><%= pair.email %></td>
-                <td><%= pair.status %></td>
+                <td>
+                    <%= pair.id %>
+                </td>
+                <td>
+                    <%= pair.api_endpoint_url %>
+                </td>
+                <td>
+                    <%= pair.email %>
+                </td>
+                <td>
+                    <%= pair.status %>
+                </td>
                 <td>
                     <a href="/ui/edit/<%= pair.id %>">Edit</a>
                     <a href="/ui/delete/<%= pair.id %>" onclick="return confirm('Are you sure?')">Delete</a>
                 </td>
+                <td>
+                    <%= pair.requestLimit %>
+                </td>
             </tr>
-        <% }); %>
+            <% }); %>
     </table>
 </body>
+
 </html>
