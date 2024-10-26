@@ -32,6 +32,12 @@ This project is a Node.js-based API load balancer and proxy server that manages 
 3. Set up the SQLite database:
    The server will automatically create a `database.sqlite` file and necessary tables on first run.
 
+4. Run the migration script:
+   ```
+   node migrate.js
+   ```
+   This script will check and update the database schema if necessary.
+
 ## Usage
 
 1. Start the server:

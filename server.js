@@ -47,26 +47,35 @@ function createTables() {
       api_endpoint_url TEXT,
       suno_id INTEGER UNIQUE,
       description TEXT,
-      RequestLimit INTEGER DEFAULT 2,
+      requestLimit INTEGER DEFAULT 2,
       FOREIGN KEY (suno_id) REFERENCES Suno(id)
     )`);
   });
 }
 
 // Function to get API instances from the database
-function getApiInstances() {
+function getApiInstances(vercelId = null) {
   return new Promise((resolve, reject) => {
-    db.all(`SELECT v.api_endpoint_url, v.RequestLimit, s.status 
-            FROM Vercel v 
-            JOIN Suno s ON v.suno_id = s.id 
-            WHERE s.status = 'VALID'`, [], (err, rows) => {
+    let query = `SELECT v.id, v.api_endpoint_url, v.requestLimit, s.status 
+                 FROM Vercel v 
+                 JOIN Suno s ON v.suno_id = s.id 
+                 WHERE s.status = 'VALID'`;
+    let params = [];
+
+    if (vercelId) {
+      query += ' AND v.id = ?';
+      params.push(vercelId);
+    }
+
+    db.all(query, params, (err, rows) => {
       if (err) {
         console.error('Error fetching API instances', err);
         resolve([]);
       } else {
         const apiInstances = rows.map(row => ({
+          id: row.id,
           url: row.api_endpoint_url,
-          requestLimit: row.RequestLimit
+          requestLimit: row.requestLimit
         }));
         resolve(apiInstances);
       }
@@ -78,8 +87,8 @@ function getApiInstances() {
 const requestTracker = [];
 
 // Function to get the next available instance
-async function getAvailableInstance() {
-  const apiInstances = await getApiInstances();
+async function getAvailableInstance(vercelId = null) {
+  const apiInstances = await getApiInstances(vercelId);
   const currentTime = Date.now();
 
   // Ensure requestTracker is initialized for all instances
@@ -87,7 +96,6 @@ async function getAvailableInstance() {
     requestTracker.push({ requestCount: 0, lastAccess: 0 });
   }
 
-  console.log('requestTracker', requestTracker);
   for (let i = 0; i < apiInstances.length; i++) {
     if (requestTracker[i].requestCount < apiInstances[i].requestLimit ||
       currentTime - requestTracker[i].lastAccess > 30000) {
@@ -96,7 +104,7 @@ async function getAvailableInstance() {
         requestTracker[i].requestCount = 0; // Reset count after cooldown
       }
 
-      return { url: apiInstances[i].url, index: i, requestLimit: apiInstances[i].requestLimit };
+      return { id: apiInstances[i].id, url: apiInstances[i].url, index: i, requestLimit: apiInstances[i].requestLimit };
     }
   }
   return null; // No available instance within limit
@@ -112,12 +120,14 @@ async function proxyRequest(req, res) {
       return res.status(503).send('All API instances are currently busy. Please try again later.');
     }
 
-    const instance = await getAvailableInstance();
+    // get from request body or params  
+    const vercelId = req.body.apiEndpointId || req.query.apiEndpointId;
+    const instance = await getAvailableInstance(vercelId);
     if (!instance) {
       console.log('No available instance');
       attempts++;
       console.log(`No available instance. Attempt ${attempts} of ${maxAttempts}.`);
-      return setTimeout(tryRequest, 1000); // Wait 1 second before retrying
+      return setTimeout(tryRequest, 400); // Wait 1 second before retrying
     }
 
     try {
@@ -139,7 +149,7 @@ async function proxyRequest(req, res) {
         console.log(`Instance ${instance.url} has insufficient credits. Updating status to INVALID.`);
         await updateVercelStatus(instance.url, 'INVALID');
         attempts++;
-        return setTimeout(tryRequest, 1000); // Retry with another instance
+        return setTimeout(tryRequest, 400); // Retry with another instance
       }
 
       // Forward the response status, headers, and data
@@ -149,11 +159,13 @@ async function proxyRequest(req, res) {
           res.setHeader(key, value);
         }
       });
+      if (instance && req.path.startsWith('/api/') && response.data && typeof response.data === 'object') {
+        response.data.apiEndpointId = instance.id;
+      }
       res.removeHeader('Content-Encoding');
       res.send(response.data);
-
       // Increase the requestCount only when the forward request is successful
-      if (req.method === 'POST' && response.status === 200) {
+      if (req.method === 'POST') {
         requestTracker[instance.index].requestCount++;
         requestTracker[instance.index].lastAccess = Date.now();
       }
@@ -161,7 +173,7 @@ async function proxyRequest(req, res) {
       console.error(`Error with instance ${instance.url}:`, error.message);
       attempts++;
       console.log(`Trying another instance. Attempt ${attempts} of ${maxAttempts}.`);
-      setTimeout(tryRequest, 1000);
+      setTimeout(tryRequest, 400);
     }
   };
 
