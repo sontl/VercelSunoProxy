@@ -54,7 +54,7 @@ function createTables() {
 }
 
 // Function to get API instances from the database
-function getApiInstances(vercelId = null) {
+function getApiInstances(apiEndpointId = null) {
   return new Promise((resolve, reject) => {
     let query = `SELECT v.id, v.api_endpoint_url, v.requestLimit, s.status 
                  FROM Vercel v 
@@ -62,9 +62,9 @@ function getApiInstances(vercelId = null) {
                  WHERE s.status = 'VALID'`;
     let params = [];
 
-    if (vercelId) {
+    if (apiEndpointId) {
       query += ' AND v.id = ?';
-      params.push(vercelId);
+      params.push(apiEndpointId);
     }
 
     db.all(query, params, (err, rows) => {
@@ -87,8 +87,8 @@ function getApiInstances(vercelId = null) {
 const requestTracker = [];
 
 // Function to get the next available instance
-async function getAvailableInstance(vercelId = null) {
-  const apiInstances = await getApiInstances(vercelId);
+async function getAvailableInstance(apiEndpointId = null) {
+  const apiInstances = await getApiInstances(apiEndpointId);
   const currentTime = Date.now();
 
   // Ensure requestTracker is initialized for all instances
@@ -121,8 +121,8 @@ async function proxyRequest(req, res) {
     }
 
     // get from request body or params  
-    const vercelId = req.body.apiEndpointId || req.query.apiEndpointId;
-    const instance = await getAvailableInstance(vercelId);
+    const apiEndpointId = req.body.apiEndpointId || req.query.apiEndpointId;
+    const instance = await getAvailableInstance(apiEndpointId);
     if (!instance) {
       console.log('No available instance');
       attempts++;
@@ -131,9 +131,11 @@ async function proxyRequest(req, res) {
     }
 
     try {
+
       const response = await axios({
         method: req.method,
         url: `${instance.url}${req.path}`,
+        params: req.query,  // Include query parameters
         headers: {
           ...req.headers,
           host: new URL(instance.url).host,
@@ -160,7 +162,13 @@ async function proxyRequest(req, res) {
         }
       });
       if (instance && req.path.startsWith('/api/') && response.data && typeof response.data === 'object') {
-        response.data.apiEndpointId = instance.id;
+        if (Array.isArray(response.data)) {
+          response.data.forEach(item => {
+            item.api_endpoint_id = instance.id;
+          });
+        } else {
+          response.data.api_endpoint_id = instance.id;
+        }
       }
       res.removeHeader('Content-Encoding');
       res.send(response.data);
